@@ -1,7 +1,10 @@
-"""Command-line entry point."""
+"""Command-line entry point for RepoMentor."""
 
 import argparse
+import sys
 from importlib.metadata import version
+
+from repomentor.fetcher import FetchError, get_repository
 
 PROGRAM_NAME = "RepoMentor"
 
@@ -27,4 +30,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     """Run the RepoMentor command."""
     args = build_parser().parse_args()
-    print(f"Analyzing repository: {args.repo}")
+
+    try:
+        repo_path = get_repository(args.repo)
+    except FetchError as error:
+        sys.exit(f"{PROGRAM_NAME}: error: {error}")
+
+    print(f"Repository ready: {repo_path}")
