@@ -5,6 +5,7 @@ import sys
 from importlib.metadata import version
 
 from repomentor.fetcher import FetchError, get_repository
+from repomentor.scanner import ScanResult, scan_repository
 
 PROGRAM_NAME = "RepoMentor"
 
@@ -27,6 +28,14 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def print_summary(scan: ScanResult) -> None:
+    """Print the file count and a table of languages."""
+    print(f"Scanned {len(scan.files)} files, skipped {scan.skipped}")
+    print(f"{'Language':<20}{'Files':>7}{'Lines':>9}")
+    for language, file_count, line_count in scan.language_totals():
+        print(f"{language:<20}{file_count:>7}{line_count:>9}")
+
+
 def main() -> None:
     """Run the RepoMentor command."""
     args = build_parser().parse_args()
@@ -37,3 +46,4 @@ def main() -> None:
         sys.exit(f"{PROGRAM_NAME}: error: {error}")
 
     print(f"Repository ready: {repo_path}")
+    print_summary(scan_repository(repo_path))
