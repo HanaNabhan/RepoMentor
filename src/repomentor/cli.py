@@ -4,6 +4,7 @@ import argparse
 import sys
 from importlib.metadata import version
 
+from repomentor.detector import DetectionResult, detect_frameworks
 from repomentor.fetcher import FetchError, get_repository
 from repomentor.scanner import ScanResult, scan_repository
 
@@ -36,6 +37,27 @@ def print_summary(scan: ScanResult) -> None:
         print(f"{language:<20}{file_count:>7}{line_count:>9}")
 
 
+def print_frameworks(detection: DetectionResult) -> None:
+    """Print the detected frameworks, where each was found, and any warnings."""
+    print()
+    if not detection.frameworks:
+        print("No known frameworks detected")
+    else:
+        print(f"{'Category':<18}{'Framework':<16}{'Found in'}")
+        for framework in detection.frameworks:
+            location = framework.file if framework.line is None else f"{framework.file} line {framework.line}"
+            print(f"{framework.category:<18}{framework.name:<16}{location}")
+
+    undeclared = detection.undeclared()
+    if undeclared:
+        names = ", ".join(framework.name for framework in undeclared)
+        print(f"Imported but not declared in any dependency file: {names}")
+
+    if detection.unparsed_files:
+        names = ", ".join(detection.unparsed_files)
+        print(f"Could not parse {len(detection.unparsed_files)} file(s), skipped for detection: {names}")
+
+
 def main() -> None:
     """Run the RepoMentor command."""
     args = build_parser().parse_args()
@@ -46,4 +68,6 @@ def main() -> None:
         sys.exit(f"{PROGRAM_NAME}: error: {error}")
 
     print(f"Repository ready: {repo_path}")
-    print_summary(scan_repository(repo_path))
+    scan = scan_repository(repo_path)
+    print_summary(scan)
+    print_frameworks(detect_frameworks(repo_path, scan))

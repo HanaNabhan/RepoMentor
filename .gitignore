@@ -1,0 +1,14 @@
+# Virtual environment
+.venv/
+
+# Python bytecode cache
+__pycache__/
+
+# Package metadata created by "pip install -e ."
+*.egg-info/
+
+# Editor settings for this machine
+.vscode/
+
+# Generated RepoMentor output
+repomentor-output/
