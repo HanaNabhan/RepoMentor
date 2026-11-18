@@ -3,12 +3,16 @@
 import argparse
 import sys
 from importlib.metadata import version
+from pathlib import Path
 
+from repomentor.analysis import RepoAnalysis, build_analysis, save_analysis
 from repomentor.detector import DetectionResult, detect_frameworks
 from repomentor.fetcher import FetchError, get_repository
+from repomentor.overview import render_overview
 from repomentor.scanner import ScanResult, scan_repository
 
 PROGRAM_NAME = "RepoMentor"
+DEFAULT_OUTPUT_DIR = "repomentor-output"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -20,6 +24,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "repo",
         help="GitHub repository URL or path to a local folder",
+    )
+    parser.add_argument(
+        "--output",
+        default=DEFAULT_OUTPUT_DIR,
+        help=f"folder to write the results to (default: {DEFAULT_OUTPUT_DIR})",
     )
     parser.add_argument(
         "--version",
@@ -58,6 +67,19 @@ def print_frameworks(detection: DetectionResult) -> None:
         print(f"Could not parse {len(detection.unparsed_files)} file(s), skipped for detection: {names}")
 
 
+def write_output(analysis: RepoAnalysis, output_dir: Path) -> None:
+    """Write analysis.json and index.md into the output folder."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    analysis_path = output_dir / "analysis.json"
+    save_analysis(analysis, analysis_path)
+    print(f"Wrote {analysis_path}")
+
+    index_path = output_dir / "index.md"
+    index_path.write_text(render_overview(analysis), encoding="utf-8")
+    print(f"Wrote {index_path}")
+
+
 def main() -> None:
     """Run the RepoMentor command."""
     args = build_parser().parse_args()
@@ -70,4 +92,12 @@ def main() -> None:
     print(f"Repository ready: {repo_path}")
     scan = scan_repository(repo_path)
     print_summary(scan)
-    print_frameworks(detect_frameworks(repo_path, scan))
+    detection = detect_frameworks(repo_path, scan)
+    print_frameworks(detection)
+
+    print()
+    analysis = build_analysis(args.repo, repo_path, scan, detection)
+    try:
+        write_output(analysis, Path(args.output))
+    except OSError as error:
+        sys.exit(f"{PROGRAM_NAME}: error: could not write output: {error}")

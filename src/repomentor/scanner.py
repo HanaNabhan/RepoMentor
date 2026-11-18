@@ -13,6 +13,7 @@ SKIP_DIRS = {
     ".venv", "venv", "env", "node_modules", "__pycache__",
     "dist", "build", ".idea", ".vscode",
     ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox",
+    "repomentor-output",
 }
 
 SKIP_FILES = {
