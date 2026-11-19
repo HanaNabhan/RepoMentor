@@ -1,14 +1,20 @@
 """Send prompts to Gemini and get back JSON that matches a schema.
+
+Every AI call in RepoMentor goes through ask_json(). Switching to another
+AI provider later means changing this file only.
 """
 
 import functools
 import json
 import os
 import time
+from dataclasses import dataclass
 
 import httpx
 from google import genai
 from google.genai import errors, types
+
+from repomentor import ai_cache
 
 API_KEY_ENV_VAR = "GEMINI_API_KEY"
 MODEL_ENV_VAR = "REPOMENTOR_MODEL"
@@ -21,6 +27,17 @@ RETRY_STATUS_CODES = {429, 500, 503}
 
 class AIError(Exception):
     """Raised when the AI request fails or returns an unusable answer."""
+
+
+@dataclass
+class AIUsage:
+    """How many answers came from Gemini and how many from the cache during this run."""
+
+    requests: int = 0
+    cache_hits: int = 0
+
+
+usage = AIUsage()
 
 
 def get_model() -> str:
@@ -40,12 +57,31 @@ def get_client() -> genai.Client:
 
 
 def ask_json(prompt: str, schema: dict, instructions: str = "") -> dict:
-    """Send a prompt and return the model's answer as a dict that follows the JSON schema.
+    """Return the model's answer as a dict that follows the JSON schema.
+
+    A saved answer is reused when the exact same request was made before.
+    Otherwise the request is sent to Gemini and the answer is saved.
+    """
+    model = get_model()
+    key = ai_cache.make_key({"model": model, "instructions": instructions, "prompt": prompt, "schema": schema})
+
+    cached_answer = ai_cache.load(key)
+    if cached_answer is not None:
+        usage.cache_hits += 1
+        return cached_answer
+
+    answer = request_json(model, prompt, schema, instructions)
+    usage.requests += 1
+    ai_cache.save(key, answer)
+    return answer
+
+
+def request_json(model: str, prompt: str, schema: dict, instructions: str) -> dict:
+    """Send one request to Gemini and parse the JSON answer.
 
     Rate limits and temporary server errors are retried a few times. Any other
     problem raises AIError with a short explanation.
     """
-    model = get_model()
     config = types.GenerateContentConfig(
         system_instruction=instructions or None,
         response_mime_type="application/json",
