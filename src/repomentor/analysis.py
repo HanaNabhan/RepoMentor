@@ -2,12 +2,13 @@
 """
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from importlib.metadata import version
 from pathlib import Path
 
 from repomentor.detector import DetectionResult, Framework
 from repomentor.scanner import FileInfo, ScanResult
+from repomentor.summarizer import FileSummary
 
 
 @dataclass
@@ -33,6 +34,7 @@ class RepoAnalysis:
     frameworks: list[Framework]
     unparsed_files: list[str]
     files: list[FileInfo]
+    file_summaries: dict[str, FileSummary] = field(default_factory=dict)
 
 
 def build_analysis(repo: str, repo_path: Path, scan: ScanResult, detection: DetectionResult) -> RepoAnalysis:

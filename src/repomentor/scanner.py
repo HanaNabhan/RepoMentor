@@ -45,6 +45,9 @@ LANGUAGES_BY_EXTENSION = {
     ".ini": "INI", ".cfg": "INI", ".xml": "XML",
 }
 
+# Languages that describe documentation, data or configuration rather than program code.
+NON_CODE_LANGUAGES = {"Other", "Text", "Markdown", "reStructuredText", "JSON", "YAML", "TOML", "INI", "XML"}
+
 
 @dataclass
 class FileInfo:
@@ -96,6 +99,11 @@ def scan_repository(repo_path: Path) -> ScanResult:
             )
 
     return result
+
+
+def is_code_language(language: str) -> bool:
+    """Return True for programming languages, False for docs, data and config formats."""
+    return language not in NON_CODE_LANGUAGES
 
 
 def is_skipped_dir(name: str) -> bool:

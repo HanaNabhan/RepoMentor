@@ -4,9 +4,8 @@ from collections import defaultdict
 
 from repomentor.analysis import RepoAnalysis
 from repomentor.detector import Framework
-
-# Languages that describe documentation or configuration rather than program code.
-NON_CODE_LANGUAGES = {"Other", "Text", "Markdown", "reStructuredText", "JSON", "YAML", "TOML", "INI", "XML"}
+from repomentor.scanner import is_code_language
+from repomentor.summarizer import ROLE_TITLES
 
 
 def render_overview(analysis: RepoAnalysis) -> str:
@@ -35,13 +34,15 @@ def render_at_a_glance(analysis: RepoAnalysis) -> str:
         f"- **Files:** {analysis.total_files:,}",
         f"- **Lines:** {analysis.total_lines:,}",
         f"- **Main language:** {main_language(analysis)}",
+        "",
+        "What each file does: [Files](files.md)",
     ])
 
 
 def main_language(analysis: RepoAnalysis) -> str:
     """Return the programming language with the most lines, ignoring docs and config files."""
     for total in analysis.languages:
-        if total.language not in NON_CODE_LANGUAGES:
+        if is_code_language(total.language):
             return total.language
     return analysis.languages[0].language if analysis.languages else "None"
 
@@ -112,3 +113,36 @@ def render_structure(analysis: RepoAnalysis) -> str:
 def cell(text: str) -> str:
     """Escape the | character, which would otherwise break a Markdown table."""
     return text.replace("|", "\\|")
+
+
+def render_files_page(analysis: RepoAnalysis) -> str:
+    """Return the Markdown text of files.md: every file, grouped by role, with its AI summary."""
+    lines = ["# Files", ""]
+    summarized = len(analysis.file_summaries)
+    lines.append(f"{summarized:,} of {analysis.total_files:,} files have an AI summary.")
+
+    for role, title in ROLE_TITLES.items():
+        rows = [
+            (file, analysis.file_summaries[file.path])
+            for file in analysis.files
+            if file.path in analysis.file_summaries and analysis.file_summaries[file.path].role == role
+        ]
+        if not rows:
+            continue
+        lines += ["", f"## {title}", "", "| File | Lines | What it does |", "|---|---:|---|"]
+        for file, summary in rows:
+            lines.append(f"| `{cell(file.path)}` | {file.lines:,} | {cell(one_line(summary.summary))} |")
+
+    not_summarized = [file for file in analysis.files if file.path not in analysis.file_summaries]
+    if not_summarized:
+        note = "Documentation, configuration and data files, plus any code file the AI step did not reach."
+        lines += ["", "## Not summarized", "", note, "", "| File | Language | Lines |", "|---|---|---:|"]
+        for file in not_summarized:
+            lines.append(f"| `{cell(file.path)}` | {file.language} | {file.lines:,} |")
+
+    return "\n".join(lines) + "\n"
+
+
+def one_line(text: str) -> str:
+    """Join a multi-line text into one line, so it fits in a table cell."""
+    return " ".join(text.split())

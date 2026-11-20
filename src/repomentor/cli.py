@@ -5,11 +5,13 @@ import sys
 from importlib.metadata import version
 from pathlib import Path
 
+from repomentor.ai_client import usage
 from repomentor.analysis import RepoAnalysis, build_analysis, save_analysis
 from repomentor.detector import DetectionResult, detect_frameworks
 from repomentor.fetcher import FetchError, get_repository
-from repomentor.overview import render_overview
+from repomentor.overview import render_files_page, render_overview
 from repomentor.scanner import ScanResult, scan_repository
+from repomentor.summarizer import summarize_files
 
 PROGRAM_NAME = "RepoMentor"
 DEFAULT_OUTPUT_DIR = "repomentor-output"
@@ -29,6 +31,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--output",
         default=DEFAULT_OUTPUT_DIR,
         help=f"folder to write the results to (default: {DEFAULT_OUTPUT_DIR})",
+    )
+    parser.add_argument(
+        "--no-ai",
+        action="store_true",
+        help="skip all AI steps and write only the facts",
     )
     parser.add_argument(
         "--version",
@@ -79,6 +86,10 @@ def write_output(analysis: RepoAnalysis, output_dir: Path) -> None:
     index_path.write_text(render_overview(analysis), encoding="utf-8")
     print(f"Wrote {index_path}")
 
+    files_path = output_dir / "files.md"
+    files_path.write_text(render_files_page(analysis), encoding="utf-8")
+    print(f"Wrote {files_path}")
+
 
 def main() -> None:
     """Run the RepoMentor command."""
@@ -95,9 +106,21 @@ def main() -> None:
     detection = detect_frameworks(repo_path, scan)
     print_frameworks(detection)
 
-    print()
     analysis = build_analysis(args.repo, repo_path, scan, detection)
+
+    ai_complete = True
+    if not args.no_ai:
+        print()
+        result = summarize_files(analysis.name, repo_path, analysis.files)
+        analysis.file_summaries = result.summaries
+        ai_complete = result.complete
+        print(f"AI: {usage.requests} requests, {usage.cache_hits} from cache")
+
+    print()
     try:
         write_output(analysis, Path(args.output))
     except OSError as error:
         sys.exit(f"{PROGRAM_NAME}: error: could not write output: {error}")
+
+    if not ai_complete:
+        sys.exit(1)
