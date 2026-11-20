@@ -12,6 +12,7 @@ def render_overview(analysis: RepoAnalysis) -> str:
     """Return the full Markdown text of the overview page."""
     sections = [
         render_title(analysis),
+        render_repo_summary(analysis),
         render_at_a_glance(analysis),
         render_languages(analysis),
         render_frameworks(analysis),
@@ -24,6 +25,20 @@ def render_overview(analysis: RepoAnalysis) -> str:
 def render_title(analysis: RepoAnalysis) -> str:
     """Repository name and where it came from."""
     return f"# {analysis.name}\n\nSource: {analysis.source}"
+
+
+def render_repo_summary(analysis: RepoAnalysis) -> str:
+    """The AI overview: purpose, how it works, and files to read first. Empty when there is no summary."""
+    summary = analysis.repo_summary
+    if summary is None:
+        return ""
+
+    lines = ["## What this repository does", "", summary.purpose, "", "### How it works", "", summary.how_it_works]
+    if summary.key_files:
+        lines += ["", "### Start here", ""]
+        for number, key_file in enumerate(summary.key_files, start=1):
+            lines.append(f"{number}. `{key_file.path}`: {key_file.why}")
+    return "\n".join(lines)
 
 
 def render_at_a_glance(analysis: RepoAnalysis) -> str:

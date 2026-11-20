@@ -11,7 +11,7 @@ from repomentor.detector import DetectionResult, detect_frameworks
 from repomentor.fetcher import FetchError, get_repository
 from repomentor.overview import render_files_page, render_overview
 from repomentor.scanner import ScanResult, scan_repository
-from repomentor.summarizer import summarize_files
+from repomentor.summarizer import summarize_files, summarize_repository
 
 PROGRAM_NAME = "RepoMentor"
 DEFAULT_OUTPUT_DIR = "repomentor-output"
@@ -114,6 +114,14 @@ def main() -> None:
         result = summarize_files(analysis.name, repo_path, analysis.files)
         analysis.file_summaries = result.summaries
         ai_complete = result.complete
+
+        if ai_complete:
+            print("Summarizing the repository")
+            analysis.repo_summary = summarize_repository(analysis)
+            ai_complete = analysis.repo_summary is not None
+        else:
+            print("Repository summary skipped: file summaries are incomplete")
+
         print(f"AI: {usage.requests} requests, {usage.cache_hits} from cache")
 
     print()

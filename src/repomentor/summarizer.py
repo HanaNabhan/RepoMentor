@@ -1,14 +1,20 @@
-"""Ask the AI what each code file does, several files per request.
+"""Ask the AI what each code file does, and then what the whole repository does.
 
-Files are grouped into batches up to a size budget, so a repository with
-80 code files needs about a dozen requests instead of 80.
+File summaries: files are grouped into batches up to a size budget, so a repository
+with 100 code files needs about 10 requests instead of 100. That matters on the
+Gemini free tier, which allows only a few requests per day.
+
+Repository summary: one request built from the collected facts and the file
+summaries, not from the code again.
 """
 
 import json
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from repomentor.ai_client import AIError, ask_json, number_lines
+from repomentor.analysis import FileSummary, KeyFile, RepoAnalysis, RepoSummary
 from repomentor.scanner import FileInfo, is_code_language
 
 BATCH_CHARACTER_BUDGET = 80_000
@@ -52,13 +58,28 @@ SCHEMA = {
     "required": ["files"],
 }
 
+MAX_KEY_FILES = 7
 
-@dataclass
-class FileSummary:
-    """What the AI says one file does."""
-
-    role: str
-    summary: str
+REPO_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "purpose": {"type": "string", "description": "2 to 3 sentences: what the project is and who it is for."},
+        "how_it_works": {"type": "string", "description": "One short paragraph: the main parts and how they connect."},
+        "key_files": {
+            "type": "array",
+            "description": f"3 to {MAX_KEY_FILES} files a new developer should read first, most important first.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "A file path exactly as listed."},
+                    "why": {"type": "string", "description": "One sentence: why to read this file."},
+                },
+                "required": ["path", "why"],
+            },
+        },
+    },
+    "required": ["purpose", "how_it_works", "key_files"],
+}
 
 
 @dataclass
@@ -150,3 +171,57 @@ def check_answer(answer: dict, batch: list[tuple[str, str]]) -> dict[str, FileSu
         if path in sent_paths and role in ROLE_TITLES and summary:
             summaries[path] = FileSummary(role, summary)
     return summaries
+
+
+def summarize_repository(analysis: RepoAnalysis) -> RepoSummary | None:
+    """Explain the whole repository from the facts and file summaries. Returns None if the AI fails."""
+    try:
+        answer = ask_json(build_repo_prompt(analysis), REPO_SCHEMA, INSTRUCTIONS)
+    except AIError as error:
+        print(f"AI step stopped: {error}")
+        print("Finished steps are cached. Run the same command again to continue.")
+        return None
+
+    purpose = str(answer.get("purpose", "")).strip()
+    how_it_works = str(answer.get("how_it_works", "")).strip()
+    if not purpose or not how_it_works:
+        print("AI step stopped: Gemini returned an empty repository summary.")
+        return None
+
+    # Keep only key files that really exist, each listed once.
+    existing_paths = {file.path for file in analysis.files}
+    key_files: list[KeyFile] = []
+    for item in answer.get("key_files", []):
+        path, why = item.get("path"), str(item.get("why", "")).strip()
+        if path in existing_paths and why and path not in {key.path for key in key_files}:
+            key_files.append(KeyFile(path, why))
+
+    return RepoSummary(purpose, how_it_works, key_files[:MAX_KEY_FILES])
+
+
+def build_repo_prompt(analysis: RepoAnalysis) -> str:
+    """Write the request from verified facts: languages, frameworks, structure and file summaries."""
+    languages = ", ".join(f"{total.language} ({total.lines:,} lines)" for total in analysis.languages[:6])
+    frameworks = ", ".join(f"{framework.name} ({framework.category})" for framework in analysis.frameworks)
+
+    top_level = Counter(
+        file.path.split("/")[0] + ("/" if "/" in file.path else "") for file in analysis.files
+    )
+    structure = ", ".join(f"{entry} ({count} files)" for entry, count in sorted(top_level.items()))
+
+    summaries = "\n".join(
+        f"- {path} [{summary.role}]: {summary.summary}" for path, summary in analysis.file_summaries.items()
+    )
+
+    task = (
+        "Explain this repository to a new developer: its purpose, how it works, and which files to read first. "
+        "Choose key files only from the file summaries below, using their paths exactly as written."
+    )
+    return "\n\n".join([
+        f"Repository: {analysis.name}",
+        task,
+        f"Languages: {languages or 'none'}",
+        f"Frameworks and tools: {frameworks or 'none detected'}",
+        f"Top-level structure: {structure}",
+        f"File summaries:\n{summaries}",
+    ])

@@ -8,7 +8,6 @@ from pathlib import Path
 
 from repomentor.detector import DetectionResult, Framework
 from repomentor.scanner import FileInfo, ScanResult
-from repomentor.summarizer import FileSummary
 
 
 @dataclass
@@ -18,6 +17,31 @@ class LanguageTotal:
     language: str
     files: int
     lines: int
+
+
+@dataclass
+class FileSummary:
+    """What the AI says one file does."""
+
+    role: str
+    summary: str
+
+
+@dataclass
+class KeyFile:
+    """A file a newcomer should read first, and why."""
+
+    path: str
+    why: str
+
+
+@dataclass
+class RepoSummary:
+    """What the AI says the whole repository does."""
+
+    purpose: str
+    how_it_works: str
+    key_files: list[KeyFile]
 
 
 @dataclass
@@ -35,6 +59,7 @@ class RepoAnalysis:
     unparsed_files: list[str]
     files: list[FileInfo]
     file_summaries: dict[str, FileSummary] = field(default_factory=dict)
+    repo_summary: RepoSummary | None = None
 
 
 def build_analysis(repo: str, repo_path: Path, scan: ScanResult, detection: DetectionResult) -> RepoAnalysis:
